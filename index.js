@@ -1,29 +1,34 @@
-const { Client, MessageAck } = require('whatsapp-web.js');
+const { Client, MessageAck,Buttons, ChatTypes } = require('whatsapp-web.js');
 require('dotenv').config();
 
 const TelegramBot = require('node-telegram-bot-api');
 
 const qr = require('qr-image');
-const client = new Client({ puppeteer: { headless: true }, clientId: 'example' });
+
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const HEADLESS = process.env.HEADLESS==='false'?false:true;
+const WHATSAPP_ADMINS = ['972524269134@c.us', '972524314139@c.us']
 
+
+const whatsapp_client = new Client({ puppeteer: { headless: HEADLESS }, clientId: 'example' });
 let sent_unread_messages = [];
 
 if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
-    console.error('Please set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in .env');
+    console.error('Please set TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID and HEADLESS in .env');
     process.exit(1);
 }
-const bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {polling: true});
+
+const telegram_bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {polling: true});
 let whatsapp_bot_status = "offline";
 
-client.on('qr', (qr_code) => {
+whatsapp_client.on('qr', (qr_code) => {
     whatsapp_bot_status = 'wait for qr';
     console.log('QR RECEIVED', qr_code);
     let img = qr.image(qr_code, { type: 'png' });
     let file = img.pipe(require('fs').createWriteStream('qr.png'));
     setTimeout(()=> {
-        bot.sendPhoto(TELEGRAM_CHAT_ID, 'qr.png', {caption: qr_code}).then((e)=> {
+        telegram_bot.sendPhoto(TELEGRAM_CHAT_ID, 'qr.png', {caption: qr_code}).then((e)=> {
             console.log('done sending qr', e);
         })
     },150);
@@ -32,8 +37,8 @@ client.on('qr', (qr_code) => {
     
     
 });
-client.on("message_ack", async (msg, ack) => {
-    console.log('message_ack', msg, ack);
+whatsapp_client.on("message_ack", async (msg, ack) => {
+    /*console.log('message_ack', msg, ack);
     console.log(msg); 
     console.log(ack);
     let ack_str = '?';
@@ -52,25 +57,86 @@ client.on("message_ack", async (msg, ack) => {
         ack_str = 'played';
     }
     
-    bot.sendMessage(TELEGRAM_CHAT_ID, `${msg.from.replace('@c.us', '')}:\n${msg.body}\nACK: ${ack_str}`);
+    telegram_bot.sendMessage(TELEGRAM_CHAT_ID, `${msg.from.replace('@c.us', '')}:\n${msg.body}\nACK: ${ack_str}`);*/
 })
-client.on('ready', () => {
+whatsapp_client.on('ready', () => {
     whatsapp_bot_status = 'ready';
     console.log('Client is ready!');
-    bot.sendMessage(TELEGRAM_CHAT_ID, 'בוט וואצאפ מוכן לשימוש');
+    telegram_bot.sendMessage(TELEGRAM_CHAT_ID, 'בוט וואצאפ מוכן לשימוש');
 });
 
-bot.on('message', (msg) => {
+whatsapp_client.on('message', async msg => {
+    console.log('MESSAGE RECEIVED', msg);
+    if(WHATSAPP_ADMINS.includes(msg.id.participant)) {
+        if(msg.body.startsWith('!\n')) {
+            let body = msg.body.substring(2);
+            // echo the body with the media if exists (image, video, audio) as attachment
+            let reponse;
+            if(msg.hasMedia) {
+                /*reponse = await msg.reply(body, {
+                    caption: msg.caption,
+                    media: msg.media,
+                    parse_mode: 'markdown'
+                });*/
+                msg.downloadMedia().then(media => {
+                    console.log('downloaded media', media);
+                    whatsapp_client.sendMessage(msg.from, body,{caption: body, media: media, parse_mode: 'markdown'});
+                });
+            }else {
+                whatsapp_client.sendMessage(msg.from, body);
+                /*reponse = await msg.reply(body, {
+                    parse_mode: 'markdown'
+                });*/
+            }
+        }
+        else if(msg.body.startsWith('!שלח')){
+            if(msg.hasQuotedMsg) {
+                let message_to_send = await msg.getQuotedMessage();
+                let campain_body = message_to_send.body;
+                let campain_media = undefined;
+                if(message_to_send.hasMedia) {
+                    campain_media = await message_to_send.downloadMedia();
+                }
+                if(campain_body == undefined || campain_body == '') {
+                    console.error('campain_body is empty');
+                    return;
+                }
+                let groups = msg.body.substring(5).split('\n');
+                let bot_chats = await whatsapp_client.getChats();
+                if(groups == undefined || groups.length == 0 || bot_chats == undefined || bot_chats.length == 0) { 
+                    console.error('groups or all user chats is empty');
+                    return ;
+                }
+                for(let i = 0; i < bot_chats.length; i++) {
+                    let chat = bot_chats[i];
+                    let iter_group = chat.name;
+                    if(groups.includes(iter_group)) {
+                        if(campain_media) {
+                            whatsapp_client.sendMessage(chat.id._serialized, campain_body,{caption: campain_body, media: campain_media, parse_mode: 'markdown'});
+                        }else {
+                            whatsapp_client.sendMessage(chat.id._serialized, campain_body);
+                        }
+                    }
+                }
+            }else {
+                msg.reply('לא נמצא הודעה מצורפת');
+            }
+        }
+    }
+});
+
+
+telegram_bot.on('message', (msg) => {
     console.log('message', msg);
     if(msg.chat.id == TELEGRAM_CHAT_ID){
         if (msg.text === '/restart') {
-            bot.sendMessage(msg.chat.id, 'התחל מחדש בעוד 5 שניות');
+            telegram_bot.sendMessage(msg.chat.id, 'התחל מחדש בעוד 5 שניות');
             setTimeout(()=> {
                 process.exit(0);
             },5000);
             
         }else if(msg.text === '/status') {
-            bot.sendMessage(msg.chat.id, whatsapp_bot_status);
+            telegram_bot.sendMessage(msg.chat.id, whatsapp_bot_status);
         }else if(msg.text.startsWith('/lead')){
             let number = msg.text.substring(6);
             if(number.startsWith('+') && number.length == 13) {
@@ -78,17 +144,16 @@ bot.on('message', (msg) => {
             }else if(number.startsWith('0') && number.length == 10){
                 number = '972' + number.substring(1);
             }else {
-                bot.sendMessage(msg.chat.id, number + ' לא תקין');
+                telegram_bot.sendMessage(msg.chat.id, number + ' לא תקין');
                 return;
             }
-            console.log('lead', number);
             const bot_number = '+972555571040';
             let contact_id = bot_number.substring(1) + "@c.us";
-            let contact = client.getContactById(contact_id).then(contact => {
+            let contact = whatsapp_client.getContactById(contact_id).then(contact => {
                 const chatId = number + "@c.us";
                 let text = 'אנחנו שמחים שהחלטת להצטרף לרשימת הVIP שלנו. אנא שמור מספר זה'
-                let text_response = client.sendMessage(chatId, text);
-                let contact_response = client.sendMessage(chatId, contact);
+                let text_response = whatsapp_client.sendMessage(chatId, text);
+                let contact_response = whatsapp_client.sendMessage(chatId, contact);
                 text_response.then((text_resp)=> {
                     contact_response.then((contact_resp)=> {
                         sent_unread_messages.push({
@@ -98,7 +163,7 @@ bot.on('message', (msg) => {
                             message_id: contact_resp.id,
                         });
 
-                        bot.sendMessage(msg.chat.id, 'הודעה נשלחה ל' + number);
+                        telegram_bot.sendMessage(msg.chat.id, 'הודעה נשלחה ל' + number);
                     });
                 });
                 
@@ -107,5 +172,5 @@ bot.on('message', (msg) => {
     }
 });
 
-client.initialize();
+whatsapp_client.initialize();
 whatsapp_bot_status = 'online';
