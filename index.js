@@ -4,7 +4,7 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 
 const qr = require('qr-image');
-const client = new Client({ puppeteer: { headless: false }, clientId: 'example' });
+const client = new Client({ puppeteer: { headless: true }, clientId: 'example' });
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
