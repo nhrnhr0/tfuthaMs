@@ -7,6 +7,7 @@ const qr = require('qr-image');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const EXPRESS_PORT = process.env.EXPRESS_PORT;
 const HEADLESS = process.env.HEADLESS==='false'?false:true;
 const WHATSAPP_ADMINS = ['972524269134@c.us', '972524314139@c.us']
 
@@ -14,13 +15,55 @@ const WHATSAPP_ADMINS = ['972524269134@c.us', '972524314139@c.us']
 const whatsapp_client = new Client({ puppeteer: { headless: HEADLESS }, clientId: 'example' });
 let sent_unread_messages = [];
 
-if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+if(!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID || !EXPRESS_PORT) {
     console.error('Please set TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID and HEADLESS in .env');
     process.exit(1);
 }
 
 const telegram_bot = new TelegramBot(TELEGRAM_BOT_TOKEN, {polling: true});
 let whatsapp_bot_status = "offline";
+
+
+const express = require('express')
+const app = express()
+const port = EXPRESS_PORT
+app.use(express.json());
+
+app.get('/', (req, res) => {
+    res.send('Hello World!')
+})
+
+
+app.post('/lead', (req, res) => {
+    const { phone, message } = req.body;
+    const chatId = phone_to_whatsapp_chat_id(phone);
+    
+    if(chatId) {
+        whatsapp_client.sendMessage(chatId, message);
+        res.send(JSON.stringify({success: true}));
+    }else {
+        console.error('Invalid phone number: ' + phone);
+        telegram_bot.sendMessage(TELEGRAM_CHAT_ID, 'מספר טלפון לא תקין לשליחה: ' + phone);
+        res.send(JSON.stringify({success: false}));
+    }
+    
+})
+app.listen(port, () => {
+    console.log(`Example app listening at http://localhost:${port}`)
+});
+
+function phone_to_whatsapp_chat_id(phone) {
+    phone = phone.replace('-', '');
+    if(phone.startsWith('+') && phone.length == 13) {
+        phone = phone.substring(1);
+    }else if(phone.startsWith('0') && phone.length == 10){
+        phone = '972' + phone.substring(1);
+    }else {
+        return null;
+    }
+    const chatId = phone + "@c.us";
+    return chatId;
+}
 
 whatsapp_client.on('qr', (qr_code) => {
     whatsapp_bot_status = 'wait for qr';
@@ -127,7 +170,7 @@ whatsapp_client.on('message', async msg => {
 
 
 telegram_bot.on('message', (msg) => {
-    console.log('message', msg);
+    console.log('telegram message: ', msg);
     if(msg.chat.id == TELEGRAM_CHAT_ID){
         if (msg.text === '/restart') {
             telegram_bot.sendMessage(msg.chat.id, 'התחל מחדש בעוד 5 שניות');
@@ -138,7 +181,8 @@ telegram_bot.on('message', (msg) => {
         }else if(msg.text === '/status') {
             telegram_bot.sendMessage(msg.chat.id, whatsapp_bot_status);
         }else if(msg.text.startsWith('/lead')){
-            let number = msg.text.substring(6);
+            debugger;
+            let number = msg.text.substring(6, msg.text.indexOf('\n'));
             if(number.startsWith('+') && number.length == 13) {
                 number = number.substring(1);
             }else if(number.startsWith('0') && number.length == 10){
@@ -147,7 +191,11 @@ telegram_bot.on('message', (msg) => {
                 telegram_bot.sendMessage(msg.chat.id, number + ' לא תקין');
                 return;
             }
-            const bot_number = '+972555571040';
+
+            const chatId = number + "@c.us";
+            const message = msg.text.substring(msg.text.indexOf('\n') + 1);
+            whatsapp_client.sendMessage(chatId, message);
+            /*const bot_number = '+972555571040';
             let contact_id = bot_number.substring(1) + "@c.us";
             let contact = whatsapp_client.getContactById(contact_id).then(contact => {
                 const chatId = number + "@c.us";
@@ -167,7 +215,7 @@ telegram_bot.on('message', (msg) => {
                     });
                 });
                 
-            });
+            });*/
         }
     }
 });

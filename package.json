@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "dotenv": "^11.0.0",
+    "express": "^4.17.2",
     "node-telegram-bot-api": "^0.56.0",
     "qr-image": "^3.2.0",
     "whatsapp-web.js": "github:pedroslopez/whatsapp-web.js#multidevice"
