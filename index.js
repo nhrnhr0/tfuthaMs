@@ -168,11 +168,27 @@ whatsapp_client.on('message', async msg => {
     }
 });
 
+const help_markup = {
+    reply_markup: {
+        keyboard: [
+            [{text: '/restart'}, {text: '/status'}],
+            [{text: '/help'}, {text: '/lead'}],
+        ]
+    }
+};
 
 telegram_bot.on('message', (msg) => {
     console.log('telegram message: ', msg);
     if(msg.chat.id == TELEGRAM_CHAT_ID){
-        if (msg.text === '/restart') {
+        if (msg.text === '/help') {
+            // send /restart /status /lead as buttons with description
+            message = '/status - לבדוק את מצב הבוט' + '\n'
+            message += '/restart - להפעיל מחדש את הבוט' + '\n'
+            message += '/lead - שליחת הודעה בוואצאפ. שימוש:' + '\n'
+            message += '/lead <phone>\n<message>' + '\n'
+            telegram_bot.sendMessage(msg.chat.id, message);
+        }
+        else if (msg.text === '/restart') {
             telegram_bot.sendMessage(msg.chat.id, 'התחל מחדש בעוד 5 שניות');
             setTimeout(()=> {
                 process.exit(0);
